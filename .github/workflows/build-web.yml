@@ -1,0 +1,89 @@
+name: Build and publish Godot Web game
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "littlehistory/**"
+      - ".github/workflows/build-web.yml"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  export-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract and commit project files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ ! -f littlehistory/project.godot ]; then
+            cp .github/workflows/build-web.yml "$RUNNER_TEMP/build-web.yml"
+            mkdir -p "$RUNNER_TEMP/project"
+            unzip -q littlegame-full-project-ready-for-github.zip -d "$RUNNER_TEMP/project"
+            cp -a "$RUNNER_TEMP/project/." .
+            cp "$RUNNER_TEMP/build-web.yml" .github/workflows/build-web.yml
+            rm littlegame-full-project-ready-for-github.zip
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Add Godot project source files"
+            git push
+          fi
+
+      - name: Install Godot 4.7.2 and Web templates
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="4.7.2"
+          mkdir -p "$RUNNER_TEMP/godot"
+          mkdir -p "$HOME/.local/share/godot/export_templates/${VERSION}.stable"
+          cd "$RUNNER_TEMP/godot"
+          curl -L --fail --retry 3 -o godot.zip "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          BIN="$(find . -maxdepth 2 -type f -name 'Godot_v*linux.x86_64' | head -n 1)"
+          test -n "$BIN"
+          chmod +x "$BIN"
+          echo "GODOT_BIN=$RUNNER_TEMP/godot/$BIN" >> "$GITHUB_ENV"
+          curl -L --fail --retry 3 -o templates.tpz "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_export_templates.tpz"
+          mkdir templates
+          unzip -q templates.tpz -d templates
+          cp -a templates/templates/. "$HOME/.local/share/godot/export_templates/${VERSION}.stable/"
+
+      - name: Import project
+        run: '"$GODOT_BIN" --headless --editor --path littlehistory --quit'
+
+      - name: Export Web build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p littlehistory/dist
+          "$GODOT_BIN" --headless --path littlehistory --export-release "Web" littlehistory/dist/index.html
+          test -s littlehistory/dist/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: littlehistory/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    needs: export-web
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
