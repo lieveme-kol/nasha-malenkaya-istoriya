@@ -23,7 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Extract and commit project files
         shell: bash
         run: |
@@ -41,7 +40,6 @@ jobs:
             git commit -m "Add Godot project source files"
             git push
           fi
-
       - name: Install Godot 4.7.2 and Web templates
         shell: bash
         run: |
@@ -60,23 +58,19 @@ jobs:
           mkdir templates
           unzip -q templates.tpz -d templates
           cp -a templates/templates/. "$HOME/.local/share/godot/export_templates/${VERSION}.stable/"
-
       - name: Import project
         run: '"$GODOT_BIN" --headless --editor --path littlehistory --quit'
-
       - name: Export Web build
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p littlehistory/dist
-          "$GODOT_BIN" --headless --path littlehistory --export-release "Web" littlehistory/dist/index.html
+          "$GODOT_BIN" --headless --path littlehistory --export-release "Web" dist/index.html
           test -s littlehistory/dist/index.html
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: littlehistory/dist
-
   deploy:
     environment:
       name: github-pages
